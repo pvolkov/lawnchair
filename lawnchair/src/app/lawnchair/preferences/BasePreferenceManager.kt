@@ -18,6 +18,7 @@ package app.lawnchair.preferences
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.compose.runtime.Stable
 import androidx.core.content.edit
 import app.lawnchair.font.FontCache
 import com.android.launcher3.InvariantDeviceProfile
@@ -93,6 +94,9 @@ sealed class BasePreferenceManager(private val context: Context) : SharedPrefere
         }
     }
 
+    // @Stable: preference objects are long-lived; release Compose must emit $stable
+    // so other compilation units' getstatic Type.$stable does not crash at runtime.
+    @Stable
     abstract inner class BasePref<T>(override val key: String, private val primaryListener: ChangeListener?) : PrefEntry<T> {
         protected var loaded = false
         private val listeners = CopyOnWriteArraySet<PreferenceChangeListener>()
@@ -118,6 +122,7 @@ sealed class BasePreferenceManager(private val context: Context) : SharedPrefere
         }
     }
 
+    @Stable
     abstract inner class StringBasedPref<T>(
         key: String,
         override val defaultValue: T,
@@ -152,6 +157,7 @@ sealed class BasePreferenceManager(private val context: Context) : SharedPrefere
         protected abstract fun stringify(value: T): String
     }
 
+    @Stable
     inner class StringPref(
         key: String,
         defaultValue: String,
@@ -280,6 +286,7 @@ sealed class BasePreferenceManager(private val context: Context) : SharedPrefere
         }
     }
 
+    @Stable
     inner class StringSetPref(
         key: String,
         override val defaultValue: Set<String>,
@@ -318,6 +325,7 @@ sealed class BasePreferenceManager(private val context: Context) : SharedPrefere
         override fun stringify(value: FontCache.Font) = value.toJsonString()
     }
 
+    @Stable
     inner class ObjectPref<T>(
         key: String,
         defaultValue: T,

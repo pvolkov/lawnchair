@@ -13,6 +13,12 @@
 -keep class android.window.** { *; }
 -keep class android.view.** { *; }
 
+# Keep Compose $stable when present. (Release crash was missing field on
+# StringPref at compile time — fixed via @Stable / stability config.)
+-keepclassmembers class ** {
+    public static final int $stable;
+}
+
 -keepclassmembers class * implements android.os.Parcelable {
   public static final ** CREATOR;
 }
