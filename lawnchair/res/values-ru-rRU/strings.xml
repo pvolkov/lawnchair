@@ -47,11 +47,13 @@
     <string name="install_update">Установить обновление</string>
     <string name="view_changes">Просмотр изменений</string>
     <string name="pro_updated">Нет доступных обновлений</string>
+    <string name="pro_no_changes">Нет доступных изменений</string>
     <!-- Changes dialog strings -->
     <string name="changes_dialog_title">Обновления</string>
     <string name="changes_dialog_error">Не удалось загрузить обновления</string>
     <string name="changes_dialog_no_changes">Изменений не найдено</string>
     <string name="changes_dialog_build_format">Сборка #%1$d → #%2$d</string>
+    <string name="changes_dialog_commit_range_format">%1$s → %2$s · %3$d новых</string>
     <string name="changes_dialog_commit_info">от %1$s • %2$s • %3$s</string>
     <!-- Time ago strings -->
     <string name="time_just_now">только что</string>

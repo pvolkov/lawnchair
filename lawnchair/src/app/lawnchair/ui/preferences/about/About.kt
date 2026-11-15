@@ -89,8 +89,10 @@ fun About(
                         openBottomSheet = false
                     }
                 },
-                onDownload = {
-                    viewModel.downloadUpdate()
+                onDownload = if (updateState.downloadEnabled) {
+                    { viewModel.downloadUpdate() }
+                } else {
+                    null
                 },
                 sheetState = sheetState,
             )

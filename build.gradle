@@ -129,6 +129,20 @@ final def buildCommit = providers.exec {
     commandLine('git', 'rev-parse', '--short=7', 'HEAD')
 }.standardOutput.asText.get().trim()
 
+// Nearest shared commit with upstream 16-dev (used by local builds to diff changelog).
+final def upstreamBaseHash = {
+    for (ref in ['upstream/16-dev', 'origin/16-dev']) {
+        def result = providers.exec {
+            commandLine('git', 'merge-base', 'HEAD', ref)
+            ignoreExitValue = true
+        }
+        if (result.result.get().exitValue == 0) {
+            return result.standardOutput.asText.get().trim()
+        }
+    }
+    return ''
+}()
+
 final def ciBuild = System.getenv("CI") == "true"
 final def ciRef = System.getenv("GITHUB_REF") ?: ""
 final def ciRunNumber = System.getenv("GITHUB_RUN_NUMBER") ?: ""
@@ -159,6 +173,7 @@ android {
         buildConfigField "String", "VERSION_DISPLAY_NAME", "\"${versionDisplayName}\""
         buildConfigField "String", "MAJOR_VERSION", "\"${majorVersion}\""
         buildConfigField "String", "COMMIT_HASH", "\"${buildCommit}\""
+        buildConfigField "String", "UPSTREAM_BASE_HASH", "\"${upstreamBaseHash}\""
         buildConfigField "boolean", "ENABLE_AUTO_INSTALLS_LAYOUT", "false"
 
         manifestPlaceholders.quickstepMinSdk = quickstepMinSdk

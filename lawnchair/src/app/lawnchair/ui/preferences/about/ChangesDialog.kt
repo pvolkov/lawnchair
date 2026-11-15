@@ -2,7 +2,6 @@ package app.lawnchair.ui.preferences.about
 
 import android.content.Context
 import android.content.Intent
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,11 +40,25 @@ fun ChangesDialog(
     changelogState: ChangelogState?,
     sheetState: SheetState,
     onDismiss: () -> Unit,
-    onDownload: () -> Unit,
+    onDownload: (() -> Unit)? = null,
 ) {
     val commits = changelogState?.commits
-    val currentBuild = changelogState?.currentBuildNumber ?: 0
-    val latestBuild = changelogState?.latestBuildNumber ?: 0
+    val downloadEnabled = onDownload != null
+
+    val rangeText = when {
+        changelogState == null -> null
+        changelogState.usesCommitRange -> stringResource(
+            R.string.changes_dialog_commit_range_format,
+            changelogState.currentLabel.orEmpty(),
+            changelogState.latestLabel.orEmpty(),
+            commits?.size ?: 0,
+        )
+        else -> stringResource(
+            R.string.changes_dialog_build_format,
+            changelogState.currentBuildNumber,
+            changelogState.latestBuildNumber,
+        )
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -64,16 +77,14 @@ fun ChangesDialog(
                     text = stringResource(R.string.changes_dialog_title),
                     style = MaterialTheme.typography.headlineSmall,
                 )
-                Text(
-                    text = stringResource(
-                        R.string.changes_dialog_build_format,
-                        currentBuild,
-                        latestBuild,
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
-                )
+                if (rangeText != null) {
+                    Text(
+                        text = rangeText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
+                    )
+                }
             }
             LazyColumn(
                 modifier = Modifier
@@ -81,14 +92,25 @@ fun ChangesDialog(
                     .fillMaxWidth(),
             ) {
                 if (commits != null) {
-                    itemsIndexed(commits) { index, commit ->
-                        PreferenceGroupItem(
-                            cutTop = index != 0,
-                            cutBottom = index != commits.lastIndex,
-                        ) {
-                            CommitItem(commit = commit)
+                    if (commits.isEmpty()) {
+                        item {
+                            Text(
+                                text = stringResource(R.string.changes_dialog_no_changes),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            )
                         }
-                        Spacer(Modifier.height(3.dp))
+                    } else {
+                        itemsIndexed(commits) { index, commit ->
+                            PreferenceGroupItem(
+                                cutTop = index != 0,
+                                cutBottom = index != commits.lastIndex,
+                            ) {
+                                CommitItem(commit = commit)
+                            }
+                            Spacer(Modifier.height(3.dp))
+                        }
                     }
                 } else {
                     item {
@@ -106,21 +128,30 @@ fun ChangesDialog(
                     .padding(horizontal = 16.dp, vertical = 8.dp)
                     .fillMaxWidth(),
             ) {
-                OutlinedButton(
-                    onClick = onDismiss,
-                    shapes = ButtonDefaults.shapes(),
-                ) {
-                    Text(text = stringResource(android.R.string.cancel))
-                }
-                Spacer(Modifier.width(8.dp))
-                Button(
-                    onClick = {
-                        onDownload()
-                        onDismiss()
-                    },
-                    shapes = ButtonDefaults.shapes(),
-                ) {
-                    Text(text = stringResource(R.string.download_update))
+                if (downloadEnabled) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shapes = ButtonDefaults.shapes(),
+                    ) {
+                        Text(text = stringResource(android.R.string.cancel))
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            onDownload?.invoke()
+                            onDismiss()
+                        },
+                        shapes = ButtonDefaults.shapes(),
+                    ) {
+                        Text(text = stringResource(R.string.download_update))
+                    }
+                } else {
+                    Button(
+                        onClick = onDismiss,
+                        shapes = ButtonDefaults.shapes(),
+                    ) {
+                        Text(text = stringResource(android.R.string.ok))
+                    }
                 }
             }
         }

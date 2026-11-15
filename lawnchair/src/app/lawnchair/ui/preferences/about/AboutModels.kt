@@ -100,12 +100,21 @@ sealed interface UpdateState {
     data object UpToDate : UpdateState
 
     /**
-     * A new update is available. Contains the name and URL of the update.
-     * @param name The name of the available update (used in `Available` state).
-     * @param url The URL to download the update from (used in `Available` state).
+     * New upstream changes are available.
+     *
+     * @param name The name of the available update asset, if downloadable.
+     * @param url The URL to download the update from, if downloadable.
+     * @param changelogState Commits / range to show in the changes dialog.
      * @param expectedSha256 The expected SHA256 hash of the APK for verification (optional).
+     * @param downloadEnabled When false, only the changelog can be viewed (local/fork builds).
      */
-    data class Available(val name: String, val url: String, val changelogState: ChangelogState?, val expectedSha256: String? = null) : UpdateState
+    data class Available(
+        val name: String = "",
+        val url: String = "",
+        val changelogState: ChangelogState?,
+        val expectedSha256: String? = null,
+        val downloadEnabled: Boolean = true,
+    ) : UpdateState
 
     /**
      * An update is currently being downloaded. Contains the download progress.
@@ -144,7 +153,14 @@ data class ChangelogState(
     val commits: List<GitHubCommit> = emptyList(),
     val currentBuildNumber: Int = 0,
     val latestBuildNumber: Int = 0,
-)
+    /** Short label for the installed base (commit hash), when not using CI build numbers. */
+    val currentLabel: String? = null,
+    /** Short label for the latest upstream tip, when not using CI build numbers. */
+    val latestLabel: String? = null,
+) {
+    val usesCommitRange: Boolean
+        get() = currentLabel != null && latestLabel != null
+}
 
 /**
  * Represents the status of a contributor.

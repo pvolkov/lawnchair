@@ -33,57 +33,15 @@ class NightlyBuildsRepository(
 
     private var currentBuildNumber: Int = 0
     private var latestBuildNumber: Int = 0
-    private var currentCommitHash: String = BuildConfig.COMMIT_HASH
 
     fun checkForUpdate() {
         coroutineScope.launch(Dispatchers.Default) {
             updateState.update { UpdateState.Checking }
             try {
-                val releases = api.getReleases()
-                val nightly = releases.firstOrNull { it.tagName == "nightly" }
-                val asset = nightly?.assets?.firstOrNull()
-
-                val majorVersion = applicationContext.getApkVersionComparison().first[0]
-                val expectedBranch = "$majorVersion-dev"
-
-                if (nightly != null && nightly.targetCommitish != expectedBranch) {
-                    Log.d(TAG, "Skipping update from branch ${nightly.targetCommitish}, expected $expectedBranch")
-                    updateState.update { UpdateState.Disabled(UpdateDisabledReason.MAJOR_IS_NEWER) }
-                    return@launch
-                }
-
-                // As of now the version string looks like this (CI builds only):
-                // <major>.<branch>.(#<CI build number>)
-                // This is done inside build.gradle in the source root. Reflect
-                // changes from there if needed.
-                currentBuildNumber = BuildConfig.VERSION_DISPLAY_NAME
-                    .substringAfterLast("#")
-                    .removeSuffix(")")
-                    .toIntOrNull() ?: 0
-                latestBuildNumber =
-                    asset?.name?.substringAfter("_")?.substringBefore("-")?.toIntOrNull() ?: 0
-
-                if (asset != null && latestBuildNumber > currentBuildNumber) {
-                    val commitList = getCommitsSinceCurrentVersion()
-
-                    updateState.update {
-                        UpdateState.Available(
-                            asset.name,
-                            asset.browserDownloadUrl,
-                            changelogState = if (commitList != null) {
-                                ChangelogState(
-                                    commits = commitList,
-                                    currentBuildNumber = currentBuildNumber,
-                                    latestBuildNumber = latestBuildNumber,
-                                )
-                            } else {
-                                null
-                            },
-                            expectedSha256 = asset.sha256Hash,
-                        )
-                    }
+                if (isLocalOrForkBuild()) {
+                    checkForUpstreamCommits()
                 } else {
-                    updateState.update { UpdateState.UpToDate }
+                    checkForOfficialNightly()
                 }
             } catch (e: Exception) {
                 when (e) {
@@ -100,9 +58,103 @@ class NightlyBuildsRepository(
         }
     }
 
+    /**
+     * Local / fork APKs use a commit hash in the version name (no CI `#run`).
+     * They must not download the official nightly (it would wipe local PRs).
+     */
+    private fun isLocalOrForkBuild(): Boolean {
+        return !BuildConfig.VERSION_DISPLAY_NAME.contains("#")
+    }
+
+    private suspend fun checkForUpstreamCommits() {
+        val majorVersion = applicationContext.getApkVersionComparison().first[0]
+        val branch = "$majorVersion-dev"
+        val baseHash = BuildConfig.UPSTREAM_BASE_HASH
+        if (baseHash.isBlank()) {
+            Log.w(TAG, "UPSTREAM_BASE_HASH is empty; treating as up-to-date")
+            updateState.update { UpdateState.UpToDate }
+            return
+        }
+
+        val compare = api.compareCommits(
+            owner = REPO_OWNER,
+            repo = REPO_NAME,
+            base = baseHash,
+            head = branch,
+        )
+        if (compare.aheadBy <= 0 || compare.commits.isEmpty()) {
+            updateState.update { UpdateState.UpToDate }
+            return
+        }
+
+        // GitHub compare returns oldest-first; UI expects newest-first.
+        val commits = compare.commits.asReversed()
+        val latestSha = commits.first().sha
+        updateState.update {
+            UpdateState.Available(
+                changelogState = ChangelogState(
+                    commits = commits,
+                    currentLabel = baseHash.take(7),
+                    latestLabel = latestSha.take(7),
+                ),
+                downloadEnabled = false,
+            )
+        }
+    }
+
+    private suspend fun checkForOfficialNightly() {
+        val releases = api.getReleases()
+        val nightly = releases.firstOrNull { it.tagName == "nightly" }
+        val asset = nightly?.assets?.firstOrNull()
+
+        val majorVersion = applicationContext.getApkVersionComparison().first[0]
+        val expectedBranch = "$majorVersion-dev"
+
+        if (nightly != null && nightly.targetCommitish != expectedBranch) {
+            Log.d(TAG, "Skipping update from branch ${nightly.targetCommitish}, expected $expectedBranch")
+            updateState.update { UpdateState.Disabled(UpdateDisabledReason.MAJOR_IS_NEWER) }
+            return
+        }
+
+        // As of now the version string looks like this (CI builds only):
+        // <major>.<branch>.(#<CI build number>)
+        // This is done inside build.gradle in the source root. Reflect
+        // changes from there if needed.
+        currentBuildNumber = BuildConfig.VERSION_DISPLAY_NAME
+            .substringAfterLast("#")
+            .removeSuffix(")")
+            .toIntOrNull() ?: 0
+        latestBuildNumber =
+            asset?.name?.substringAfter("_")?.substringBefore("-")?.toIntOrNull() ?: 0
+
+        if (asset != null && latestBuildNumber > currentBuildNumber) {
+            val commitList = getCommitsSinceCurrentVersion()
+
+            updateState.update {
+                UpdateState.Available(
+                    name = asset.name,
+                    url = asset.browserDownloadUrl,
+                    changelogState = if (commitList != null) {
+                        ChangelogState(
+                            commits = commitList,
+                            currentBuildNumber = currentBuildNumber,
+                            latestBuildNumber = latestBuildNumber,
+                        )
+                    } else {
+                        null
+                    },
+                    expectedSha256 = asset.sha256Hash,
+                    downloadEnabled = true,
+                )
+            }
+        } else {
+            updateState.update { UpdateState.UpToDate }
+        }
+    }
+
     fun downloadUpdate() {
         val currentState = updateState.value
-        if (currentState !is UpdateState.Available) return
+        if (currentState !is UpdateState.Available || !currentState.downloadEnabled) return
 
         coroutineScope.launch(Dispatchers.IO) {
             updateState.update { UpdateState.Downloading(0f) }
@@ -153,9 +205,10 @@ class NightlyBuildsRepository(
         return try {
             val majorVersion = applicationContext.getApkVersionComparison().first[0]
             val branch = "$majorVersion-dev"
+            val currentCommitHash = BuildConfig.COMMIT_HASH
 
             // Get the latest commits (last 100)
-            val commits = api.getRepositoryCommits("LawnchairLauncher", "lawnchair", branch)
+            val commits = api.getRepositoryCommits(REPO_OWNER, REPO_NAME, branch)
 
             // Find the index of current commit
             val currentIndex = commits.indexOfFirst { it.sha.startsWith(currentCommitHash) }
@@ -163,6 +216,8 @@ class NightlyBuildsRepository(
             if (currentIndex > 0) {
                 // Return all commits newer than current version
                 commits.take(currentIndex)
+            } else if (currentIndex == 0) {
+                emptyList()
             } else {
                 // If current commit not found, show last N commits
                 commits.take(MAX_FALLBACK_COMMITS)
@@ -220,6 +275,8 @@ class NightlyBuildsRepository(
 
     companion object {
         private const val TAG = "NightlyBuildsRepository"
+        private const val REPO_OWNER = "LawnchairLauncher"
+        private const val REPO_NAME = "lawnchair"
     }
 }
 

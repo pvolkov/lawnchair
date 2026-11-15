@@ -26,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.lawnchair.util.getApkVersionComparison
+import com.android.launcher3.BuildConfig
 import com.android.launcher3.R
 import java.io.File
 
@@ -53,8 +54,12 @@ fun UpdateSection(
             }
 
             UpdateState.UpToDate -> {
+                // Local/fork builds only track upstream commits (no APK download).
+                val isLocalOrForkBuild = !BuildConfig.VERSION_DISPLAY_NAME.contains("#")
                 Text(
-                    text = stringResource(R.string.pro_updated),
+                    text = stringResource(
+                        if (isLocalOrForkBuild) R.string.pro_no_changes else R.string.pro_updated,
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp),
@@ -66,7 +71,15 @@ fun UpdateSection(
                     onClick = onViewChanges,
                     shapes = ButtonDefaults.shapes(),
                 ) {
-                    Text(text = stringResource(R.string.download_update))
+                    Text(
+                        text = stringResource(
+                            if (updateState.downloadEnabled) {
+                                R.string.download_update
+                            } else {
+                                R.string.view_changes
+                            },
+                        ),
+                    )
                 }
             }
 
